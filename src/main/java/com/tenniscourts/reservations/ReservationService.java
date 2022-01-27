@@ -1,7 +1,9 @@
 package com.tenniscourts.reservations;
 
 import com.tenniscourts.exceptions.EntityNotFoundException;
+import com.tenniscourts.schedules.ScheduleService;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -16,14 +18,14 @@ public class ReservationService {
 
     private final ReservationMapper reservationMapper;
 
+    private final ScheduleService scheduleService;
+
     public ReservationDTO bookReservation(CreateReservationRequestDTO createReservationRequestDTO) {
-        throw new UnsupportedOperationException();
+        return reservationMapper.map(reservationRepository.save(reservationMapper.map(createReservationRequestDTO)));
     }
 
-    public ReservationDTO findReservation(Long reservationId) {
-        return reservationRepository.findById(reservationId).map(reservationMapper::map).orElseThrow(() -> {
-            throw new EntityNotFoundException("Reservation not found.");
-        });
+    public ReservationDTO findReservation(Long reservationId){
+        return reservationRepository.findById(reservationId).map(reservationMapper::map).orElseThrow(() -> new EntityNotFoundException("Reservation not found."));
     }
 
     public ReservationDTO cancelReservation(Long reservationId) {
@@ -38,9 +40,7 @@ public class ReservationService {
             BigDecimal refundValue = getRefundValue(reservation);
             return this.updateReservation(reservation, refundValue, ReservationStatus.CANCELLED);
 
-        }).orElseThrow(() -> {
-            throw new EntityNotFoundException("Reservation not found.");
-        });
+        }).orElseThrow(() -> new EntityNotFoundException("Reservation not found."));
     }
 
     private Reservation updateReservation(Reservation reservation, BigDecimal refundValue, ReservationStatus status) {
@@ -73,20 +73,30 @@ public class ReservationService {
 
     /*TODO: This method actually not fully working, find a way to fix the issue when it's throwing the error:
             "Cannot reschedule to the same slot.*/
-    public ReservationDTO rescheduleReservation(Long previousReservationId, Long scheduleId) {
+
+    /*
+    Basically, solution proposed was to rename the scheduleId parameter to newScheduleId
+    to avoid ambiguity, with previousReservationId parameter was enough to get all data,
+    by the other hand the record was not being updated, so I added the line 94 to get the
+    new Schedule object and update the entire Reservation record on line 94, finally
+    I refactored the line 96, so it was not necessary to book again as the record was
+    recently updated and we just needed to return the result.
+     */
+    public ReservationDTO rescheduleReservation(Long previousReservationId, Long newScheduleId) {
         Reservation previousReservation = cancel(previousReservationId);
 
-        if (scheduleId.equals(previousReservation.getSchedule().getId())) {
+        if (newScheduleId.equals(previousReservation.getSchedule().getId())) {
             throw new IllegalArgumentException("Cannot reschedule to the same slot.");
         }
 
         previousReservation.setReservationStatus(ReservationStatus.RESCHEDULED);
+        previousReservation.setSchedule(scheduleService.findScheduleEntity(newScheduleId));
         reservationRepository.save(previousReservation);
 
-        ReservationDTO newReservation = bookReservation(CreateReservationRequestDTO.builder()
+        ReservationDTO newReservation = reservationMapper.map(reservationMapper.map(CreateReservationRequestDTO.builder()
                 .guestId(previousReservation.getGuest().getId())
-                .scheduleId(scheduleId)
-                .build());
+                .scheduleId(newScheduleId)
+                .build()));
         newReservation.setPreviousReservation(reservationMapper.map(previousReservation));
         return newReservation;
     }

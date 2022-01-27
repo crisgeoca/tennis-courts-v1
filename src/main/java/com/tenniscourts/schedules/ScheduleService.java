@@ -1,5 +1,6 @@
 package com.tenniscourts.schedules;
 
+import com.tenniscourts.exceptions.EntityNotFoundException;
 import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -25,8 +26,11 @@ public class ScheduleService {
     }
 
     public ScheduleDTO findSchedule(Long scheduleId) {
-        //TODO: implement
-        return null;
+        return scheduleRepository.findById(scheduleId).map(scheduleMapper::map).orElseThrow(() -> new EntityNotFoundException("Schedule not found."));
+    }
+
+    public Schedule findScheduleEntity(Long scheduleId) {
+        return scheduleMapper.map(findSchedule(scheduleId));
     }
 
     public List<ScheduleDTO> findSchedulesByTennisCourtId(Long tennisCourtId) {
